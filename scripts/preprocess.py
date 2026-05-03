@@ -16,38 +16,89 @@ import pandas as pd
 from pathlib import Path
 
 EVENT_CONFIG = {
-    "CM9": {
-        "name": "Capricorn Cup",
+    # CM6–CM12 QC events using one merged CSV source.
+    "CM6": {
+        "name": "CM6 QC",
         "icon": "capricorn_icon.png",
         "theme": "default",
-        "distance": "Sprint",
-        "surface": "Turf",
-        "track": "Chukyo 1200m",
-        "finals_csv": "data/cm9_finals.csv",
-        "statsheet": "data/cm9_finals_statsheet_1.parquet",
-        "podium": "data/cm9_finals_podium_1.parquet",
+        "distance": "Unknown",
+        "surface": "Unknown",
+        "track": "Unknown",
+        "finals_csv": "cm4_cm12_finals.csv",
+        "merged_csv": True,
+        "cm_id": "CM6",
+        "local": True,
+    },
+    "CM7": {
+        "name": "CM7 QC",
+        "icon": "capricorn_icon.png",
+        "theme": "default",
+        "distance": "Unknown",
+        "surface": "Unknown",
+        "track": "Unknown",
+        "finals_csv": "cm4_cm12_finals.csv",
+        "merged_csv": True,
+        "cm_id": "CM7",
+        "local": True,
+    },
+    "CM8": {
+        "name": "CM8 QC",
+        "icon": "capricorn_icon.png",
+        "theme": "default",
+        "distance": "Unknown",
+        "surface": "Unknown",
+        "track": "Unknown",
+        "finals_csv": "cm4_cm12_finals.csv",
+        "merged_csv": True,
+        "cm_id": "CM8",
+        "local": True,
+    },
+    "CM9": {
+        "name": "CM9 QC",
+        "icon": "capricorn_icon.png",
+        "theme": "default",
+        "distance": "Unknown",
+        "surface": "Unknown",
+        "track": "Unknown",
+        "finals_csv": "cm4_cm12_finals.csv",
+        "merged_csv": True,
+        "cm_id": "CM9",
+        "local": True,
     },
     "CM10": {
-        "name": "Aquarius Cup",
+        "name": "CM10 QC",
         "icon": "aquarius_icon.png",
         "theme": "uma",
-        "distance": "Mile",
-        "surface": "Dirt",
-        "track": "Tokyo Dirt 1600m",
-        "finals_csv": "data/cm10_finals.csv",
-        "statsheet": "data/cm10_finals_statsheet_0.parquet",
-        "podium": "data/cm10_finals_podium_0.parquet",
+        "distance": "Unknown",
+        "surface": "Unknown",
+        "track": "Unknown",
+        "finals_csv": "cm4_cm12_finals.csv",
+        "merged_csv": True,
+        "cm_id": "CM10",
+        "local": True,
     },
     "CM11": {
-        "name": "Pisces Cup",
+        "name": "CM11 QC",
         "icon": "pisces_icon.png",
         "theme": "uma",
-        "distance": "Long",
-        "surface": "Turf",
-        "track": "Hanshin Turf 3200m",
-        "finals_csv": "sheet_cache_merged_1.csv",
-        "statsheet": "cm11_finals_statsheet_0.parquet",
-        "podium": "cm11_finals_podium_0.parquet",
+        "distance": "Unknown",
+        "surface": "Unknown",
+        "track": "Unknown",
+        "finals_csv": "cm4_cm12_finals.csv",
+        "merged_csv": True,
+        "cm_id": "CM11",
+        "local": True,
+    },
+    "CM12": {
+        "name": "CM12 QC",
+        "icon": "pisces_icon.png",
+        "theme": "uma",
+        "distance": "Unknown",
+        "surface": "Unknown",
+        "track": "Unknown",
+        "finals_csv": "cm4_cm12_finals.csv",
+        "merged_csv": True,
+        "cm_id": "CM12",
         "local": True,
     },
 }
@@ -56,6 +107,69 @@ COL_IGN = "Unique display name"
 COL_OSHI = 'Did you build an "oshi"/niche uma ace this CM?'
 COL_QUOTE = 'Optional - Quote in case you win an "Oshi award" this CM to be used in the award'
 COL_RESULT = "Finals result?"
+
+
+def normalize_yes_no(value):
+    if pd.isna(value):
+        return ""
+    raw = str(value).strip().lower()
+    return "Yes" if raw in {"yes", "y", "true", "1"} else "No"
+
+
+def load_dataframes(data_base, cfg):
+    # 1) Load the single merged CSV file for the selected event.
+    finals_df = pd.read_csv(data_base / cfg["finals_csv"])
+
+    if cfg.get("merged_csv"):
+        # 2) Validate required columns from the merged source.
+        required = {
+            "Meta|CM_ID", "Meta|IGN", "Meta|League", "Finals|Group", "Finals|Result",
+            "Finals|ResultsList|Screenshot", "Finals|Winner|Screenshot|Stat1",
+            "Meta|Oshi|Built", "podium|trainer_name", "podium|name", "podium|placement", "podium|time",
+            "stat|is_user", "stat|ign", "stat|name", "stat|Speed", "stat|Stamina", "stat|Power", "stat|Guts", "stat|Wit"
+        }
+        missing = [c for c in required if c not in finals_df.columns]
+        if missing:
+            raise ValueError(f"Merged CSV is missing required columns: {missing}")
+
+        # 3) Slice merged file down to one CM event (CM6, CM7, ... CM12).
+        if cfg.get("cm_id"):
+            finals_df = finals_df[finals_df["Meta|CM_ID"].astype(str).str.upper() == str(cfg["cm_id"]).upper()].copy()
+
+        # 4) Build stats dataframe used later by slide stat extraction.
+        stats_cols = ["stat|is_user", "stat|ign", "stat|name", "stat|Speed", "stat|Stamina", "stat|Power", "stat|Guts", "stat|Wit"]
+        stats_missing = [c for c in stats_cols if c not in finals_df.columns]
+        if stats_missing:
+            raise ValueError(f"Merged CSV is missing stats columns: {stats_missing}")
+        stats_df = finals_df[stats_cols].rename(columns={
+            "stat|is_user": "is_user",
+            "stat|ign": "ign",
+            "stat|name": "name",
+            "stat|Speed": "Speed",
+            "stat|Stamina": "Stamina",
+            "stat|Power": "Power",
+            "stat|Guts": "Guts",
+            "stat|Wit": "Wit",
+        }).dropna(subset=["ign", "name"])
+        stats_df["is_user"] = stats_df["is_user"].fillna(False).astype(str).str.lower().isin(["true", "1", "yes", "y"])
+
+        # 5) Build podium dataframe used for winner uniqueness checks.
+        podium_cols = ["podium|trainer_name", "podium|name", "podium|placement", "podium|time"]
+        podium_missing = [c for c in podium_cols if c not in finals_df.columns]
+        if podium_missing:
+            raise ValueError(f"Merged CSV is missing podium columns: {podium_missing}")
+        podium_df = finals_df[podium_cols].rename(columns={
+            "podium|trainer_name": "trainer_name",
+            "podium|name": "trainee_name",
+            "podium|placement": "placement",
+            "podium|time": "time",
+        }).dropna(subset=["trainer_name", "trainee_name", "placement"])
+        podium_df["placement"] = pd.to_numeric(podium_df["placement"], errors="coerce")
+        podium_df = podium_df.dropna(subset=["placement"])
+        podium_df["placement"] = podium_df["placement"].astype(int)
+
+        return finals_df, podium_df, stats_df
+    raise ValueError("This workflow now supports merged_csv events only.")
 
 DEFAULT_COSTUME = {
     "Rice Shower": "[Rosy Dreams] Rice Shower",
@@ -84,16 +198,20 @@ def main():
         data_base = Path(args.repo).resolve()
         umas_dir = data_base / "assets" / "umas"
 
-    finals_df = pd.read_csv(data_base / cfg["finals_csv"])
-    podium_df = pd.read_parquet(data_base / cfg["podium"])
-    stats_df = pd.read_parquet(data_base / cfg["statsheet"])
+    finals_df, podium_df, stats_df = load_dataframes(data_base, cfg)
 
     print(f"Loaded {len(finals_df)} CSV rows, {len(podium_df)} podium rows, {len(stats_df)} stat rows")
 
-    oshi_first = finals_df[
-        (finals_df[COL_OSHI] == "Yes") & (finals_df[COL_RESULT] == "1st")
+    selected_rows = finals_df[
+        (finals_df["Meta|League"] == "Graded (No Uma Restrictions)")
+        & (finals_df["Finals|Group"] == "A Finals")
+        & (finals_df["Finals|Result"] == "1st")
+        & finals_df["Finals|ResultsList|Screenshot"].notna()
+        & finals_df["Finals|Winner|Screenshot|Stat1"].notna()
+        & (finals_df["Finals|ResultsList|Screenshot"].astype(str).str.strip() != "")
+        & (finals_df["Finals|Winner|Screenshot|Stat1"].astype(str).str.strip() != "")
     ]
-    print(f"Oshi 1st-place winners in CSV: {len(oshi_first)}")
+    print(f"Screenshot-qualified 1st-place winners in CSV: {len(selected_rows)}")
 
     race_winners = podium_df[podium_df["placement"] == 1]
     uma_win_counts = race_winners["trainee_name"].value_counts()
@@ -104,9 +222,12 @@ def main():
     images_needed = set()
     claimed_umas = set()
 
-    for _, row in oshi_first.iterrows():
-        ign = row[COL_IGN]
-        quote = row[COL_QUOTE] if pd.notna(row[COL_QUOTE]) else ""
+    for _, row in selected_rows.iterrows():
+        ign = row["Meta|IGN"]
+        quote = row["Meta|Oshi|Quote"] if ("Meta|Oshi|Quote" in row and pd.notna(row["Meta|Oshi|Quote"])) else ""
+        if normalize_yes_no(row["Meta|Oshi|Built"]) != "Yes":
+            print(f"  SKIP {ign}: Meta|Oshi|Built is not Yes")
+            continue
 
         player_wins = race_winners[race_winners["trainer_name"] == ign]
         if player_wins.empty:
